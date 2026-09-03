@@ -17,7 +17,7 @@ COUNTRIES = {
     "in": "India",
     "gb": "United Kingdom",
     "us": "United States",
-    "ae": "United Arab Emirates",
+    "ca": "Canada",
     "sg": "Singapore",
 }
 
