@@ -1,0 +1,67 @@
+name: Daily Engineering Jobs Digest
+
+on:
+  schedule:
+    # 7:00 AM IST = 1:30 AM UTC
+    - cron: "30 1 * * *"
+    # 7:00 PM IST = 1:30 PM UTC
+    - cron: "30 13 * * *"
+  workflow_dispatch: {}   # lets you trigger it manually from the Actions tab
+
+permissions:
+  contents: write   # needed only if you commit the PDF back to the repo (Step below)
+
+jobs:
+  run-digest:
+    runs-on: ubuntu-22.04
+    timeout-minutes: 15
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+          cache: "pip"
+
+      - name: Install Python dependencies
+        run: pip install -r requirements.txt
+
+      - name: Install Playwright browsers
+        run: playwright install --with-deps chromium
+
+      - name: Run the aggregator pipeline
+        env:
+          ADZUNA_APP_ID: ${{ secrets.ADZUNA_APP_ID }}
+          ADZUNA_APP_KEY: ${{ secrets.ADZUNA_APP_KEY }}
+          DATABASE_URL: ${{ secrets.DATABASE_URL }}
+          GMAIL_ADDRESS: ${{ secrets.GMAIL_ADDRESS }}
+          GMAIL_APP_PASSWORD: ${{ secrets.GMAIL_APP_PASSWORD }}
+          EMAIL_RECIPIENT: ${{ secrets.EMAIL_RECIPIENT }}
+          TWILIO_ACCOUNT_SID: ${{ secrets.TWILIO_ACCOUNT_SID }}
+          TWILIO_AUTH_TOKEN: ${{ secrets.TWILIO_AUTH_TOKEN }}
+          TWILIO_WHATSAPP_FROM: ${{ secrets.TWILIO_WHATSAPP_FROM }}
+          WHATSAPP_TO: ${{ secrets.WHATSAPP_TO }}
+          PDF_PUBLIC_URL: ${{ secrets.PDF_PUBLIC_URL }}
+        run: python main.py
+
+      - name: Upload PDF as workflow artifact
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: daily-digest-${{ github.run_id }}
+          path: daily_digest.pdf
+          retention-days: 14
+
+      # Optional: commit the DB + PDF back to the repo so state persists
+      # across runs (GitHub Actions runners are ephemeral otherwise).
+      - name: Commit updated database & PDF
+        if: always()
+        run: |
+          git config user.name "job-aggregator-bot"
+          git config user.email "actions@github.com"
+          git add job_aggregator.db daily_digest.pdf || true
+          git diff --cached --quiet || git commit -m "chore: daily digest $(date -u +'%Y-%m-%d')"
+          git push || echo "Nothing to push"
