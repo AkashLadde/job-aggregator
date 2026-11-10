@@ -22,7 +22,7 @@ from scrapers.jsearch_scraper import JSearchScraper
 from scrapers.jooble_scraper import JoobleScraper
 from scrapers.company_boards_scraper import CompanyBoardsScraper
 from scrapers.govt_rss_scraper import GovtRssScraper
-from scrapers.job_classifier import is_cyber_security
+from scrapers.job_classifier import is_cyber_security, CSE_SUB, GOVT_SUB
 from pdf.report_generator import generate_pdf_report, sort_jobs
 from notifications.email_sender import send_email_with_pdfs, build_html
 
@@ -82,14 +82,18 @@ def main():
 
     cyber_jobs = sort_jobs([j for j in new_jobs if is_cyber_security(j)])
     general_jobs = sort_jobs([j for j in new_jobs if not is_cyber_security(j)])
-    logger.info("Classified: %d Cyber Security, %d General CSE.", len(cyber_jobs), len(general_jobs))
+    logger.info("Streams: %d Cyber Security, %d CSE & Allied.", len(cyber_jobs), len(general_jobs))
 
     generate_pdf_report(cyber_jobs, CYBER_PDF_PATH,
-                        report_title="Cyber Security — Fresher Internships & Jobs")
+                        report_title="Cyber Security — Fresher Engineering Internships & Jobs")
     generate_pdf_report(general_jobs, GENERAL_PDF_PATH,
-                        report_title="CSE / Allied Branches — Fresher Internships & Jobs")
+                        report_title="CSE & Allied (CSE, ISE, IT, AI/ML, Data Science) — Fresher Engineering Jobs")
 
-    sections = [("Cyber Security", cyber_jobs), ("CSE / Software / Data / AI", general_jobs)]
+    # Email: Cyber Security first, then one section per CSE & Allied sub-stream
+    sections = [("Cyber Security", cyber_jobs)]
+    for sub in [name for name, _ in CSE_SUB] + ["Software Development", GOVT_SUB]:
+        sections.append((f"CSE & Allied · {sub}", [j for j in general_jobs if j.get("sub_stream") == sub]))
+    sections = [(t, js) for t, js in sections if js]
 
     if args.preview:
         with open("email_preview.html", "w", encoding="utf-8") as f:

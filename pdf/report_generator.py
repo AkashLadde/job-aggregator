@@ -85,7 +85,9 @@ def _role_cell(job: dict) -> Paragraph:
     jt = job.get("job_type", "Job")
     colour = {"Internship": "#2e7d32", "Apprenticeship": "#6a1b9a"}.get(jt, "#1565c0")
     title = escape(job["title"])
-    return Paragraph(f'<font color="{colour}"><b>[{jt}]</b></font><br/>{title}', CELL_STYLE)
+    sub = escape(job.get("sub_stream") or "")
+    sub_html = f' <font color="#777777">· {sub}</font>' if sub else ""
+    return Paragraph(f'<font color="{colour}"><b>[{jt}]</b></font>{sub_html}<br/>{title}', CELL_STYLE)
 
 
 def _company_cell(job: dict) -> Paragraph:

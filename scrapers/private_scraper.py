@@ -23,13 +23,13 @@ COUNTRY_NAMES = {
     "sg": "Singapore", "au": "Australia", "ca": "Canada", "de": "Germany", "nl": "Netherlands",
 }
 
-FRESHER_TERMS = "intern internship fresher freshers trainee graduate entry-level junior apprentice"
+FRESHER_TERMS = "intern internship fresher freshers trainee graduate entry-level junior apprentice btech"
 DOMAIN_TERMS = (
-    "software developer programmer python java cybersecurity SOC "
-    "data analyst data scientist machine learning AI cloud devops tester"
+    "software developer engineer programmer python java cybersecurity SOC VAPT "
+    "data scientist machine learning AI cloud devops"
 )
-# Words that are almost never in a CSE fresher ad - saves API results for useful jobs.
-EXCLUDE_TERMS = "telecaller bpo guard driver nurse"
+# Words that are almost never in a CSE-engineering fresher ad - saves API results for useful jobs.
+EXCLUDE_TERMS = "telecaller bpo guard driver nurse helpdesk accountant"
 
 
 def _countries() -> dict[str, str]:

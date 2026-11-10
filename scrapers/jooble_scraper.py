@@ -19,13 +19,13 @@ from database.db import api_calls_used, record_api_calls
 logger = logging.getLogger(__name__)
 
 KEYWORDS = [
-    "fresher software developer",
-    "internship computer science",
-    "trainee engineer IT fresher",
+    "fresher software engineer btech",
+    "internship computer science engineering",
+    "graduate engineer trainee CSE",
     "cyber security fresher",
-    "data analyst fresher",
-    "python developer fresher",
-    "machine learning intern",
+    "data science fresher btech",
+    "SOC analyst fresher",
+    "machine learning engineer intern",
 ]
 
 

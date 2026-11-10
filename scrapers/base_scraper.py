@@ -20,6 +20,7 @@ from abc import ABC, abstractmethod
 import requests
 
 from scrapers.fresher_filter import judge
+from scrapers.job_classifier import classify, CSE, GOVT_SUB
 
 logger = logging.getLogger(__name__)
 
@@ -262,6 +263,9 @@ class BaseScraper(ABC):
                              raw.get("title"), raw.get("company"), verdict.reason)
                 continue
             job = self.normalize(raw)
+            job["stream"], job["sub_stream"] = classify(raw.get("title", ""), raw.get("description", ""))
+            if job["category"] == "Govt" and job["stream"] == CSE and job["sub_stream"] == "Software Development":
+                job["sub_stream"] = GOVT_SUB
             job["fresher_reason"] = verdict.reason
             job["fresher_tags"] = verdict.tags
             job["job_type"] = "Internship" if "Internship" in verdict.tags else (

@@ -131,19 +131,106 @@ CSE_DOMAIN = re.compile(
     r"soc\b|penetration|ethical\s+hack|vapt|security\s+(?:analyst|engineer|operations)|"
     r"cloud|devops|aws|azure|gcp|kubernetes|linux|"
     r"(?:qa|test|automation)\s+(?:engineer|analyst)|software\s+test|"
-    r"it\s+(?:support|intern|trainee|analyst|engineer)|computer\s+science|\bcse\b|\bmca\b|\bbca\b|"
-    r"information\s+technology|blockchain|iot|embedded\s+software|ui\s*/?\s*ux)",
+    r"it\s+(?:intern|trainee|analyst|engineer)|computer\s+science|computer\s+engineering|\bcse\b|\bise\b|"
+    r"information\s+science|information\s+technology|blockchain|iot|embedded\s+software)",
     re.I,
 )
 
-# Extra words accepted as "technical" for GOVERNMENT notifications, which rarely
-# name a tech stack ("Graduate Apprentice", "Scientist/Engineer 'SC'", "JRF").
-GOVT_TECH = re.compile(
-    r"\b(engineer(?:ing)?|apprentice(?:ship)?|technical|technician|scientist|computer|programmer|"
-    r"information\s+technology|it\s+(?:officer|assistant|professional)|electronics|"
-    r"research\s+(?:fellow|assistant)|jrf|b\.?\s?tech|mca|bca)\b",
+# ---------------------------------------------------------------- engineering streams
+# The user wants ONLY engineering roles in Cyber Security and CSE-allied branches
+# (CSE, ISE, IT, AI/ML, AI & DS, Data Science, Cyber Security, Computer Engg).
+
+# Engineering degrees. "B.E"/"BE"/"M.E" must be capitals (the word "be" is everywhere).
+ENGG_DEGREE = re.compile(
+    r"(\bb\.?\s?tech\b|\bm\.?\s?tech\b|engineering\s+(?:graduates?|degree|students?|freshers?|background|"
+    r"discipline|branch)|bachelor'?s?\s+(?:degree\s+)?(?:of|in)\s+(?:engineering|technology)|graduate\s+engineer)",
     re.I,
 )
+ENGG_DEGREE_CAPS = re.compile(r"\b(?:B\.\s?E|BE|M\.\s?E)\b\.?(?=[\s/,)(-]|$)")
+# Non-engineering qualifications. An ad that lists ONLY these is dropped.
+NON_ENGG_DEGREE = re.compile(
+    r"(\bbca\b|\bmca\b|\bb\.?\s?sc\b|\bm\.?\s?sc\b|\bbba\b|\bmba\b|\bb\.?\s?com\b|\bm\.?\s?com\b|\bb\.?a\.?(?=[\s/,)])|"
+    r"\bdiploma\b|\b(?:10|12)th\b|\biti\b|\bsslc\b|\bpuc\b|any\s+graduate|graduates?\s+(?:in|of|from)\s+any\s+(?:stream|discipline))",
+    re.I,
+)
+# CSE family of branches
+CSE_BRANCH = re.compile(
+    r"(computer\s+science|computer\s+engineering|\bcse\b|information\s+science|\bise\b|"
+    r"information\s+technology|data\s+science|artificial\s+intelligence|\bai\s*(?:&|and|-)\s*(?:ml|ds)\b|"
+    r"\baiml\b|\baids\b|machine\s+learning|cyber\s*-?\s*security|"
+    r"circuit\s+branch(?:es)?|all\s+(?:engineering\s+)?(?:branches|disciplines|streams)|"
+    r"any\s+(?:engineering\s+)?(?:branch|discipline|stream))",
+    re.I,
+)
+# "IT" / "CS" / "ISE" must be capitals so we don't match the word "it".
+CSE_BRANCH_CAPS = re.compile(r"(?<![A-Za-z])(?:IT|CS|ISE)(?![A-Za-z])")
+# Other engineering branches - only looked for NEXT TO degree words
+# ("B.E Mechanical", "branches: EEE/ECE"), so "production server" doesn't count.
+OTHER_BRANCH = re.compile(
+    r"(mechanical|\bmech\b|civil|electrical|\beee\b|\bece\b|\bee\b|electronics(?:\s*(?:&|and)\s*\w+)?|"
+    r"chemical|automobile|automotive|production\s+engineering|industrial\s+engineering|instrumentation|"
+    r"metallurgy|metallurgical|mining|aeronautical|aerospace|textile|petroleum|bio[\s-]?tech\w*|biomedical|"
+    r"marine|agricultur\w*|mechatronics)",
+    re.I,
+)
+DEGREE_CONTEXT = re.compile(
+    r"(\bb\.?\s?tech|\bm\.?\s?tech|\bB\.?\s?E\b|\bdiploma|engineering|branch(?:es)?|disciplines?|"
+    r"streams?|speciali[sz]ation|degree\s+in|graduates?\s+in|qualification|eligib)",
+    re.I,
+)
+
+
+def _degree_windows(text: str) -> str:
+    """Text near degree / branch words - where an ad says WHO can apply."""
+    parts = [text[max(0, m.start() - 40): m.end() + 90] for m in DEGREE_CONTEXT.finditer(text)]
+    return " | ".join(parts)
+
+
+# Roles that are NOT engineering work even if they say "IT" / "tech".
+NON_ENGG_ROLE = re.compile(
+    r"\b(help\s*desk|desktop\s+support|technical\s+support|tech\s+support|it\s+support|service\s+desk|"
+    r"customer\s+support|non[\s-]?voice|voice\s+process|chat\s+process|back\s+office|kpo|data\s+entry|"
+    r"computer\s+operator|content\s+writer|copywriter|seo|digital\s+marketing|social\s+media|graphic|"
+    r"video\s+editor|animator|ui\s*/?\s*ux|ux\s+designer|ui\s+designer|product\s+designer|web\s+designer|"
+    r"business\s+analyst|operations\s+executive|mis\s+executive|admin\s+executive|typist|stenographer|clerk|"
+    r"lab\s+assistant|computer\s+teacher|computer\s+instructor|trainer)\b",
+    re.I,
+)
+# Title says it's for another branch / hardware ("VLSI Trainee", "Mechanical GET").
+OTHER_BRANCH_TITLE = re.compile(
+    r"\b(mechanical|civil|electrical|\beee\b|\bece\b|chemical|automobile|production|instrumentation|metallurgy|"
+    r"mining|aeronautical|textile|petroleum|vlsi|rtl|asic|fpga|pcb|analog|rf\b|hardware\s+(?:design|engineer)|"
+    r"electronics\s+engineer|plc|scada|hvac|autocad|solidworks)\b",
+    re.I,
+)
+ENGINEERING_ONLY = _env_bool("ENGINEERING_ONLY", True)
+
+
+def has_cse_branch(text: str) -> bool:
+    return bool(CSE_BRANCH.search(text) or CSE_BRANCH_CAPS.search(text))
+
+
+def engineering_check(title: str, desc: str, domain: str = "cse") -> str | None:
+    """
+    Return a rejection reason if the job isn't an engineering role in the
+    Cyber Security / CSE-allied streams, else None.
+    """
+    full = f"{title}. {desc}"
+    if NON_ENGG_ROLE.search(title):
+        return f"Non-engineering role ({NON_ENGG_ROLE.search(title).group(0)})"
+    if OTHER_BRANCH_TITLE.search(title):
+        return f"Other branch ({OTHER_BRANCH_TITLE.search(title).group(0)})"
+    engg = bool(ENGG_DEGREE.search(full) or ENGG_DEGREE_CAPS.search(full))
+    if NON_ENGG_DEGREE.search(full) and not engg:
+        return "Not for B.E/B.Tech graduates"
+    cse = has_cse_branch(full)
+    if not cse and OTHER_BRANCH.search(_degree_windows(full)):
+        return "Only for other engineering branches"
+    if domain == "govt" and not cse:
+        # Govt notifications must name a CSE-family branch (or "all branches").
+        return "Govt post - no CSE/IT branch mentioned"
+    return None
+
 
 # Clearly non-CSE roles that sneak in through words like "security" or "graduate".
 NON_CSE_TITLE = re.compile(
@@ -220,7 +307,7 @@ def is_cse_related(title: str, description: str, domain: str = "cse") -> bool:
     text = f"{title} {description}"
     if CSE_DOMAIN.search(text):
         return True
-    return domain == "govt" and bool(GOVT_TECH.search(text))
+    return domain == "govt" and has_cse_branch(text)
 
 
 # ---------------------------------------------------------------- main API
@@ -239,6 +326,11 @@ def judge(title: str, description: str, domain: str = "cse", strict: bool | None
 
     if not is_cse_related(title, desc, domain):
         return Verdict(False, "Not a CSE/IT role")
+
+    if ENGINEERING_ONLY:
+        why_not = engineering_check(title, desc, domain)
+        if why_not:
+            return Verdict(False, why_not)
 
     if SENIOR_TITLE.search(title) and not FRESHER_TITLE.search(title):
         return Verdict(False, f"Senior title ({SENIOR_TITLE.search(title).group(0)})")

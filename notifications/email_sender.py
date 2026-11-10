@@ -30,7 +30,9 @@ def _rows(jobs: list[dict]) -> str:
         out.append(
             "<tr>"
             f'<td style="padding:6px;border-bottom:1px solid #eee;vertical-align:top">'
-            f'<span style="color:{TYPE_COLOUR.get(jt, "#1565c0")};font-weight:bold;font-size:11px">{escape(jt)}</span><br>'
+            f'<span style="color:{TYPE_COLOUR.get(jt, "#1565c0")};font-weight:bold;font-size:11px">{escape(jt)}</span>'
+            + (f'<span style="color:#888;font-size:11px"> · {escape(j["sub_stream"])}</span>' if j.get("sub_stream") else "")
+            + "<br>"
             f'<a href="{escape(j["apply_url"], quote=True)}" style="font-weight:bold;color:#1a237e">{escape(j["title"])}</a><br>'
             f'<span style="color:#444">{escape(j["company"])} · {escape(j["location"])}</span>'
             + (f'<br><span style="color:#999;font-size:11px">via {escape(j["source"])}</span>' if j.get("source") else "")
@@ -62,7 +64,8 @@ def build_html(sections: list[tuple[str, list[dict]]]) -> str:
     body = "".join(_section(t, js) for t, js in sections)
     return (
         '<div style="font-family:Arial,sans-serif;max-width:760px">'
-        f'<h2 style="color:#1a237e;margin-bottom:2px">Fresher Internships &amp; Jobs — {datetime.now():%d %b %Y}</h2>'
+        f'<h2 style="color:#1a237e;margin-bottom:2px">Fresher Engineering Jobs — {datetime.now():%d %b %Y}</h2>'
+        '<p style="color:#555;margin:0">Streams: Cyber Security · CSE &amp; allied (CSE, ISE, IT, AI/ML, Data Science)</p>'
         f'<p style="color:#555;margin-top:0">{total} new opportunities ({interns} internships). '
         "Each one passed the automatic fresher check. Always read the full ad before applying, "
         "and never pay any fee to apply for a job.</p>"
@@ -93,7 +96,7 @@ def send_email_with_pdfs(pdf_paths: list[str], total_job_count: int,
 
     interns = sum(1 for _, js in (sections or []) for j in js if j.get("job_type") == "Internship")
     msg = EmailMessage()
-    msg["Subject"] = (f"🎓 Fresher Jobs & Internships — {total_job_count} new"
+    msg["Subject"] = (f"🎓 Fresher Engineering Jobs (Cyber Security & CSE allied) — {total_job_count} new"
                       + (f" ({interns} internships)" if interns else "")
                       + f" · {datetime.now():%d %b}")
     msg["From"] = gmail

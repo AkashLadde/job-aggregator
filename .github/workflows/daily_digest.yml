@@ -33,9 +33,10 @@ jobs:
       - name: Install Python dependencies
         run: pip install -r requirements.txt
 
-      - name: Self-test (fresher filter + job source parsers, offline)
+      - name: Self-test (fresher filter, engineering streams, job sources - offline)
         run: |
           python -m tests.test_fresher_filter
+          python -m tests.test_streams
           python -m tests.test_sources
 
       - name: Run the aggregator pipeline
@@ -55,6 +56,7 @@ jobs:
           JSEARCH_PROVIDER: ${{ vars.JSEARCH_PROVIDER }}
           COMPANY_BOARDS: ${{ vars.COMPANY_BOARDS }}
           RSS_FEEDS: ${{ vars.RSS_FEEDS }}
+          ENGINEERING_ONLY: ${{ vars.ENGINEERING_ONLY }}
         run: python main.py
 
       - name: Upload PDFs as workflow artifact

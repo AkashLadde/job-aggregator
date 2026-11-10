@@ -3,8 +3,26 @@
 Pipeline: **Fetch (6 sources) → Fresher filter → Dedupe & store → 2 PDFs → Email**,
 run free on GitHub Actions at 7 AM and 7 PM IST.
 
-Only **internships, trainee/apprentice roles and 0-experience jobs** in **CSE and allied
-branches** (software, cyber security, data, AI/ML, cloud), **India only** by default.
+Only **engineering** internships, trainee/apprentice roles and 0-experience jobs, in two streams,
+**India only** by default:
+
+| Stream | Sub-streams shown in the email |
+|---|---|
+| **Cyber Security** | SOC & Monitoring · VAPT & Pentesting · AppSec & Cloud Security |
+| **CSE & Allied** (CSE, ISE, IT, AI/ML, AI & DS, Data Science) | Data Science & AI/ML · Software Development · Cloud & DevOps · Testing & QA · Networking · Govt / PSU (CSE/IT) |
+
+### Engineering-only rules (`ENGINEERING_ONLY=true`, default)
+
+| Dropped | Example |
+|---|---|
+| Non-engineering roles | IT Helpdesk, Technical Support (voice), Data Entry, UI/UX Designer, Content Writer, Business Analyst |
+| Ads only for non-engineering degrees | "BCA / B.Sc only", "any graduate", "Diploma / 12th pass" |
+| Ads only for other branches | "B.E Mechanical / Electrical", VLSI, PCB, AutoCAD roles |
+| Govt posts that name no CSE-family branch | "IOCL Apprentice - Mechanical, Civil" |
+
+Kept: ads that mention B.E/B.Tech/M.Tech, a CSE-family branch, "all branches", or no degree at all
+(e.g. "Software Engineer Intern"). An ad open to "CSE, ECE, EEE, Mechanical" is kept.
+Set `ENGINEERING_ONLY=false` to switch these rules off.
 
 ## Job sources
 
@@ -65,6 +83,7 @@ back after every run, so the limits hold across runs.
 | `COMPANY_BOARDS` | CRED, Meesho, Paytm, Groww | see below |
 | `RSS_FEEDS` | FreeJobAlert feed | comma-separated RSS URLs |
 | `JSEARCH_PROVIDER` | `rapidapi` | or `openwebninja` |
+| `ENGINEERING_ONLY` | `true` | `false` turns off the engineering-only rules |
 
 ### Adding more companies
 
@@ -104,6 +123,7 @@ pip install -r requirements.txt
 cp .env.example .env              # fill in your values
 
 python -m tests.test_fresher_filter      # 22 sample ads
+python -m tests.test_streams             # engineering-only rules + stream labels
 python -m tests.test_sources             # all 6 sources, offline, no keys needed
 python main.py --mock --preview          # sample data -> PDFs + email_preview.html, no email
 python main.py --no-notify               # REAL data, no email - check the PDFs
@@ -128,7 +148,7 @@ scrapers/
   private_scraper.py         Adzuna - private sector
   jsearch_scraper.py         Google for Jobs (LinkedIn, Naukri, Indeed ...)
   jooble_scraper.py          Jooble
-  job_classifier.py          Cyber Security vs general CSE
+  job_classifier.py          stream + sub-stream labels
 database/db.py               SQLite, dedupe, API usage counters
 pdf/report_generator.py      PDFs
 notifications/email_sender.py

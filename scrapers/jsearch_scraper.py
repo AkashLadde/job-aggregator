@@ -34,15 +34,15 @@ ENDPOINTS = {
 
 # (query, extra filters). Rotated daily so all are covered every couple of days.
 QUERIES = [
-    ("software developer fresher", {"job_requirements": "no_experience"}),
+    ("software engineer fresher btech", {"job_requirements": "no_experience"}),
     ("software engineer intern", {"employment_types": "INTERN"}),
-    ("cyber security fresher", {"job_requirements": "no_experience"}),
-    ("data analyst fresher", {"job_requirements": "no_experience"}),
-    ("machine learning AI intern", {"employment_types": "INTERN"}),
-    ("graduate engineer trainee IT", {}),
+    ("cyber security fresher engineer", {"job_requirements": "no_experience"}),
     ("SOC analyst fresher", {}),
-    ("python developer fresher", {"job_requirements": "no_experience"}),
-    ("cloud devops intern", {"employment_types": "INTERN"}),
+    ("data science fresher btech", {"job_requirements": "no_experience"}),
+    ("machine learning AI intern", {"employment_types": "INTERN"}),
+    ("graduate engineer trainee computer science", {}),
+    ("VAPT penetration testing intern", {"employment_types": "INTERN"}),
+    ("cloud devops engineer fresher", {"job_requirements": "no_experience"}),
 ]
 
 
