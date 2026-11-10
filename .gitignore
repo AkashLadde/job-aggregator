@@ -1,11 +1,6 @@
 .env
-.venv/
 venv/
 __pycache__/
-*.py[cod]
-*.db
-*.sqlite
-*.sqlite3
+*.pyc
+email_preview.html
 *.pdf
-.pytest_cache/
-.mypy_cache/

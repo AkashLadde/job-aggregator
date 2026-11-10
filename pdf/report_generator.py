@@ -5,6 +5,7 @@ the extra columns (country, posted date) alongside bulleted eligibility.
 """
 import logging
 from datetime import datetime
+from xml.sax.saxutils import escape
 
 from reportlab.lib import colors
 from reportlab.lib.pagesizes import A4, landscape
@@ -44,14 +45,13 @@ def _p(text: str, style=CELL_STYLE) -> Paragraph:
 
 
 def _plain(text: str) -> Paragraph:
-    safe = (text or "").replace("&", "&amp;").replace("<", "&lt;").replace(">", "&gt;")
-    return Paragraph(safe, CELL_STYLE)
+    return Paragraph(escape(text or ""), CELL_STYLE)
 
 
 def _link(url: str) -> Paragraph:
     if not url:
         return _plain("N/A")
-    safe_url = url.replace('"', "")
+    safe_url = escape(url.replace('"', ""))  # Adzuna links contain '&'
     return Paragraph(f'<link href="{safe_url}">Direct Link</link>', LINK_STYLE)
 
 
@@ -72,19 +72,49 @@ def _h(text: str) -> Paragraph:
     return Paragraph(text, HEADER_STYLE)
 
 
+TYPE_ORDER = {"Internship": 0, "Apprenticeship": 1, "Job": 2}
+
+
+def sort_jobs(jobs: list[dict]) -> list[dict]:
+    """Internships first, then apprenticeships, then jobs; newest first inside each."""
+    by_date = sorted(jobs, key=lambda j: j.get("posted_date") or "", reverse=True)
+    return sorted(by_date, key=lambda j: TYPE_ORDER.get(j.get("job_type", "Job"), 2))
+
+
+def _role_cell(job: dict) -> Paragraph:
+    jt = job.get("job_type", "Job")
+    colour = {"Internship": "#2e7d32", "Apprenticeship": "#6a1b9a"}.get(jt, "#1565c0")
+    title = escape(job["title"])
+    return Paragraph(f'<font color="{colour}"><b>[{jt}]</b></font><br/>{title}', CELL_STYLE)
+
+
+def _company_cell(job: dict) -> Paragraph:
+    src = job.get("source")
+    extra = f'<br/><font color="#777777"><i>via {escape(src)}</i></font>' if src else ""
+    return Paragraph(escape(job["company"]) + extra, CELL_STYLE)
+
+
+def _fresher_cell(job: dict) -> Paragraph:
+    reason = escape(job.get("fresher_reason") or "")
+    tags = ", ".join(job.get("fresher_tags") or [])
+    text = f"<b>{reason}</b>" + (f"<br/><i>{escape(tags)}</i>" if tags else "")
+    return Paragraph(text, CELL_STYLE)
+
+
 def _build_section_table(jobs: list[dict], start_index: int = 1) -> Table:
     header = [
-        _h("#"), _h("Role"), _h("Company"), _h("Eligibility Criteria"), _h("Location"),
-        _h("Country"), _h("Posted / Start Date"), _h("Deadline"), _h("Direct Link"),
+        _h("#"), _h("Role"), _h("Company"), _h("Eligibility (from the ad)"), _h("Fresher check"),
+        _h("Location"), _h("Country"), _h("Posted"), _h("Deadline"), _h("Direct Link"),
         _h("Verify Official Site"),
     ]
     data = [header]
     for i, job in enumerate(jobs, start=start_index):
         data.append([
             _plain(str(i)),
-            _plain(job["title"]),
-            _plain(job["company"]),
+            _role_cell(job),
+            _company_cell(job),
             _p(job["eligibility"]),
+            _fresher_cell(job),
             _plain(job["location"]),
             _plain(job.get("country", "N/A")),
             _plain(job.get("posted_date") or "Not available"),
@@ -93,7 +123,8 @@ def _build_section_table(jobs: list[dict], start_index: int = 1) -> Table:
             _search_link(job["company"], job["title"]),
         ])
 
-    col_widths = [0.6*cm, 2.3*cm, 2.1*cm, 4.7*cm, 1.7*cm, 1.5*cm, 1.9*cm, 2.0*cm, 1.6*cm, 2.2*cm]
+    # total 27.6 cm = landscape A4 width minus margins
+    col_widths = [0.7*cm, 3.4*cm, 2.6*cm, 6.0*cm, 3.0*cm, 2.3*cm, 1.6*cm, 2.0*cm, 1.7*cm, 1.7*cm, 2.6*cm]
     table = Table(data, colWidths=col_widths, repeatRows=1)
 
     style_cmds = [
@@ -125,9 +156,14 @@ def generate_pdf_report(jobs: list[dict], output_path: str, report_title: str = 
     today_str = datetime.now().strftime("%A, %d %B %Y")
 
     elements.append(Paragraph(report_title, TITLE_STYLE))
-    elements.append(Paragraph(f"Generated on {today_str} · {len(jobs)} new fresher opportunities", SUBTITLE_STYLE))
+    n_intern = sum(1 for j in jobs if j.get("job_type") == "Internship")
     elements.append(Paragraph(
-        "Note: 'Direct Link' is the original posting source (often LinkedIn/a job board, not always the "
+        f"Generated on {today_str} · {len(jobs)} new fresher opportunities "
+        f"({n_intern} internships, {len(jobs) - n_intern} jobs/apprenticeships)", SUBTITLE_STYLE))
+    elements.append(Paragraph(
+        "Every listing passed an automatic fresher check (no senior titles, no 1+ years experience, "
+        "batch year matches). 'Fresher check' shows why it was included - still read the full ad. "
+        "'Direct Link' is the original posting source (often LinkedIn/a job board, not always the "
         "company's own site). Use 'Verify Official Site' to confirm before applying. Pin codes and hard "
         "deadlines are not reliably available from the data source and are omitted rather than guessed.",
         NOTE_STYLE
@@ -136,8 +172,8 @@ def generate_pdf_report(jobs: list[dict], output_path: str, report_title: str = 
     if not jobs:
         elements.append(Paragraph("No new opportunities found this run. Check back next time!", styles["Normal"]))
     else:
-        govt_jobs = [j for j in jobs if j.get("category") == "Govt"]
-        private_jobs = [j for j in jobs if j.get("category") != "Govt"]
+        govt_jobs = sort_jobs([j for j in jobs if j.get("category") == "Govt"])
+        private_jobs = sort_jobs([j for j in jobs if j.get("category") != "Govt"])
 
         if govt_jobs:
             elements.append(Paragraph(f"Government / PSU Opportunities ({len(govt_jobs)})", SECTION_STYLE))
@@ -145,8 +181,6 @@ def generate_pdf_report(jobs: list[dict], output_path: str, report_title: str = 
             elements.append(Spacer(1, 14))
 
         if private_jobs:
-            if govt_jobs:
-                elements.append(PageBreak())
             elements.append(Paragraph(f"Private Sector Opportunities ({len(private_jobs)})", SECTION_STYLE))
             elements.append(_build_section_table(private_jobs, start_index=len(govt_jobs) + 1))
 

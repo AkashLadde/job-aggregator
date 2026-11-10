@@ -1,87 +1,136 @@
-# Automated Engineering Job & Internship Aggregator
+# Fresher Job & Internship Aggregator
 
-Daily pipeline: **Scrape → Dedupe & Store → Build PDF → Email + WhatsApp**, run for free every morning via GitHub Actions.
+Pipeline: **Fetch (6 sources) → Fresher filter → Dedupe & store → 2 PDFs → Email**,
+run free on GitHub Actions at 7 AM and 7 PM IST.
 
-## Project Structure
+Only **internships, trainee/apprentice roles and 0-experience jobs** in **CSE and allied
+branches** (software, cyber security, data, AI/ML, cloud), **India only** by default.
 
-```
-job_aggregator/
-├── scrapers/
-│   ├── base_scraper.py      # shared retry/timeout/normalize + mock fallback logic
-│   ├── govt_scraper.py      # Scraper A: Govt/PSU/NATS listings
-│   └── private_scraper.py   # Scraper B: Private/Unstop/LinkedIn listings
-├── database/
-│   ├── models.py            # JobOpportunity SQLAlchemy model
-│   └── db.py                 # connection + dedup-aware save helpers
-├── pdf/
-│   └── report_generator.py  # ReportLab styled PDF builder
-├── notifications/
-│   ├── email_sender.py      # Gmail SMTP with PDF attachment
-│   └── whatsapp_sender.py   # Twilio WhatsApp message
-├── main.py                  # orchestrator entry point
-├── requirements.txt
-├── .env.example
-└── .github/workflows/daily_digest.yml
-```
+## Job sources
 
-## 1. Local Setup (test before going live)
+| # | Source | What it covers | Key? | Free limit | How the pipeline stays inside it |
+|---|---|---|---|---|---|
+| 1 | Company career boards (Lever / Greenhouse) | Official openings at CRED, Meesho, Paytm, Groww + any you add | No | None | - |
+| 2 | Govt RSS (FreeJobAlert) | Govt / PSU / bank notifications | No | None | - |
+| 3 | Adzuna | Private + some PSU jobs | Yes | ~250 calls/day | ~10 calls per run |
+| 4 | **JSearch** (Google for Jobs) | **LinkedIn, Naukri, Indeed, Glassdoor, Foundit** postings | Yes | ~200 requests/month | 3 per day, morning run only, hard stop at 95/month |
+| 5 | Jooble | 1,000s of Indian job boards | Yes | **500 requests per key, total** | 1 per day, morning only, hard stop at 480 |
+
+**Why not LinkedIn / Naukri directly?** LinkedIn's job APIs are only for approved partners,
+Naukri has no public API, and scraping either breaks their terms of use (and gets blocked).
+Google for Jobs already indexes their public postings, so JSearch is the legitimate free
+route. Each job shows where it came from ("via LinkedIn", "via Naukri.com").
+
+API usage is counted in `job_aggregator.db` (table `api_usage`), which the workflow commits
+back after every run, so the limits hold across runs.
+
+## Getting the free API keys (step by step)
+
+**Adzuna**
+1. Sign up at https://developer.adzuna.com/signup
+2. Dashboard → copy **Application ID** and **Application Key** → `ADZUNA_APP_ID`, `ADZUNA_APP_KEY`
+
+**JSearch (LinkedIn / Naukri / Indeed via Google for Jobs)**
+1. Create an account at https://rapidapi.com
+2. Search **"JSearch"** (by OpenWeb Ninja / letscrape) → **Pricing** → subscribe to the free **Basic** plan
+3. Copy your **X-RapidAPI-Key** → `JSEARCH_API_KEY`
+4. Don't add a credit card. Some RapidAPI plans charge for requests over the limit, and the
+   built-in stop at 95/month keeps you under it anyway.
+5. Alternative: get a key at https://www.openwebninja.com and set variable `JSEARCH_PROVIDER=openwebninja`
+
+**Jooble**
+1. Go to https://jooble.org/api/about → fill the form (name, email, website: your GitHub repo URL)
+2. The key arrives by email → `JOOBLE_API_KEY`
+
+**Gmail App Password**: enable 2-Step Verification → https://myaccount.google.com/apppasswords
+
+## GitHub setup
+
+**Settings → Secrets and variables → Actions → Secrets tab → New repository secret:**
+
+| Secret | Required? |
+|---|---|
+| `GMAIL_ADDRESS`, `GMAIL_APP_PASSWORD`, `EMAIL_RECIPIENT` | yes |
+| `ADZUNA_APP_ID`, `ADZUNA_APP_KEY` | recommended |
+| `JSEARCH_API_KEY` | optional (LinkedIn/Naukri coverage) |
+| `JOOBLE_API_KEY` | optional |
+
+**Variables tab** (all optional):
+
+| Variable | Default | Meaning |
+|---|---|---|
+| `JOB_COUNTRIES` | `in` | Adzuna countries, e.g. `in,ae,sg` |
+| `FRESHER_BATCH_YEARS` | last/this/next year | e.g. `2025,2026,2027` |
+| `FRESHER_STRICT` | `true` | `false` also includes jobs that never mention experience |
+| `COMPANY_BOARDS` | CRED, Meesho, Paytm, Groww | see below |
+| `RSS_FEEDS` | FreeJobAlert feed | comma-separated RSS URLs |
+| `JSEARCH_PROVIDER` | `rapidapi` | or `openwebninja` |
+
+### Adding more companies
+
+Open a company's careers page and click any job:
+
+- URL like `jobs.lever.co/<slug>/...` → add `lever:<slug>:Name`
+- URL like `boards.greenhouse.io/<slug>/...` or `job-boards.greenhouse.io/<slug>/...` → add `greenhouse:<slug>:Name`
+
+Check the slug in your browser first: `https://api.lever.co/v0/postings/<slug>?mode=json`
+or `https://boards-api.greenhouse.io/v1/boards/<slug>/jobs` should show JSON.
+Example: `COMPANY_BOARDS=lever:cred:CRED,lever:meesho:Meesho,lever:paytm:Paytm,greenhouse:groww:Groww,lever:<new>:<Name>`
+
+## How the fresher filter decides
+
+| Check | Example | Result |
+|---|---|---|
+| Not a CSE/IT role | Security Guard, Telesales, Mechanical, Peon | dropped |
+| Senior title | Senior, Lead, Manager, Architect, Engineer II, Director, Professor | dropped |
+| Ad excludes freshers | "experienced candidates only" | dropped |
+| Asks for 1+ years | "minimum 3 years of experience" | dropped (unless "freshers can also apply") |
+| Only old batches | "2021 and 2022 batch only" | dropped |
+| Fresher signal | Intern, Trainee, Fresher, Entry level, Junior, "0-1 years", "2026 batch" | **kept** |
+| No signal either way | "Full Stack Developer" with no experience info | dropped (strict mode) |
+
+Govt notifications use a relaxed mode: technical posts (Engineer, Apprentice, Scientist, IT)
+that aren't senior and don't ask for experience are kept and marked "Check eligibility".
+
+Each kept job shows **why** it was kept, so you can spot mistakes and tune
+`scrapers/fresher_filter.py`.
+
+## Local testing
 
 ```bash
 python -m venv venv
-source venv/bin/activate        # Windows: venv\Scripts\activate
+source venv/bin/activate          # Windows: venv\Scripts\activate
 pip install -r requirements.txt
-playwright install chromium
+cp .env.example .env              # fill in your values
 
-cp .env.example .env            # fill in real values (or leave blank to test with mocks only)
+python -m tests.test_fresher_filter      # 22 sample ads
+python -m tests.test_sources             # all 6 sources, offline, no keys needed
+python main.py --mock --preview          # sample data -> PDFs + email_preview.html, no email
+python main.py --no-notify               # REAL data, no email - check the PDFs
+python main.py                           # real data + email
 ```
 
-**First run — no credentials needed, uses mock data, no notifications:**
-```bash
-python main.py --mock --no-notify
+- `--mock` writes sample jobs into `job_aggregator.db`. Delete the file after mock testing,
+  or back up your real one first.
+- JSearch and Jooble only run before 12:00 IST (the morning run). To test them in the evening,
+  set `JSEARCH_EVENING=true` / `JOOBLE_EVENING=true` in `.env` for that one run. Every
+  Jooble call uses up one of its 500 lifetime requests.
+
+## Project structure
+
 ```
-This creates `job_aggregator.db` and `daily_digest.pdf` locally. Open the PDF to confirm formatting looks right.
-
-**Test email/WhatsApp once `.env` is filled in:**
-```bash
-python main.py --mock
+scrapers/
+  fresher_filter.py          is it for freshers? is it CSE/IT?
+  base_scraper.py            shared: HTTP, retries, filter, key redaction in logs
+  company_boards_scraper.py  Lever + Greenhouse career boards
+  govt_rss_scraper.py        Govt notifications (RSS)
+  govt_scraper.py            Adzuna - India public sector
+  private_scraper.py         Adzuna - private sector
+  jsearch_scraper.py         Google for Jobs (LinkedIn, Naukri, Indeed ...)
+  jooble_scraper.py          Jooble
+  job_classifier.py          Cyber Security vs general CSE
+database/db.py               SQLite, dedupe, API usage counters
+pdf/report_generator.py      PDFs
+notifications/email_sender.py
+tests/                       offline tests (run by the workflow before every run)
 ```
-
-**Run against live targets** (once you've adapted the CSS selectors in `govt_scraper.py` / `private_scraper.py` to the real site structure — see notes in those files):
-```bash
-python main.py
-```
-
-## 2. Gmail App Password Setup
-1. Enable 2-Step Verification on your Google account.
-2. Go to https://myaccount.google.com/apppasswords
-3. Generate a 16-character App Password for "Mail".
-4. Use that (not your login password) as `GMAIL_APP_PASSWORD`.
-
-## 3. Twilio WhatsApp Setup
-1. Create a free account at twilio.com.
-2. Activate the WhatsApp Sandbox (Console → Messaging → Try it out → Send a WhatsApp message).
-3. From your phone, send the given join code to the sandbox number to opt in.
-4. Copy `Account SID`, `Auth Token`, and the sandbox `From` number into `.env`.
-5. For production (not sandbox), apply for a Twilio WhatsApp Business Sender.
-
-> WhatsApp media (the PDF) must be served from a public HTTPS URL — Twilio can't accept a raw file upload. Options: commit the PDF to your repo and use its raw GitHub URL, or host it on S3/Cloudinary. Without a public URL, the pipeline still sends a text summary via WhatsApp and the full PDF via email.
-
-## 4. GitHub Actions Setup (free daily automation)
-1. Push this project to a GitHub repository.
-2. Go to **Settings → Secrets and variables → Actions → New repository secret** and add:
-   - `GMAIL_ADDRESS`, `GMAIL_APP_PASSWORD`, `EMAIL_RECIPIENT`
-   - `TWILIO_ACCOUNT_SID`, `TWILIO_AUTH_TOKEN`, `TWILIO_WHATSAPP_FROM`, `WHATSAPP_TO`
-   - `DATABASE_URL` (optional — omit to use SQLite committed to the repo)
-   - `PDF_PUBLIC_URL` (optional)
-3. The workflow at `.github/workflows/daily_digest.yml` runs automatically at **00:30 UTC = 6:00 AM IST** daily, and can also be triggered manually from the **Actions** tab (`workflow_dispatch`).
-4. Each run uploads the PDF as a workflow artifact (kept 14 days) and, if `contents: write` permission and a committed SQLite DB are used, commits the updated DB back so dedup state persists across runs.
-
-## 5. Going from Mock → Live Scraping
-- `govt_scraper.py` and `private_scraper.py` contain a **Playwright + BeautifulSoup pattern** with placeholder CSS selectors (`.listing-card`, `.opportunity-card`, etc.). Inspect your real target site's HTML (DevTools → right-click element → Inspect) and update the selectors to match.
-- Always check the target site's `robots.txt` and Terms of Service before scraping in production. LinkedIn in particular restricts automated scraping — prefer their official Jobs API or a compliant aggregator like Unstop's public pages for that source.
-- If a live scrape fails or returns 0 results, the pipeline automatically falls back to mock data and logs a warning — it will never crash your GitHub Actions run.
-
-## 6. Extending
-- **Postgres in production:** just set `DATABASE_URL=postgresql+psycopg2://user:pass@host:5432/db` — no code changes needed (SQLAlchemy handles the dialect).
-- **More sources:** add a new class in `scrapers/` extending `BaseScraper`, implement `fetch_live()` + `mock_data()`, and add it to the `scrapers` list in `main.py`.
-- **Meta Cloud API instead of Twilio:** swap the internals of `whatsapp_sender.py` — the `send_whatsapp_digest()` function signature can stay the same so `main.py` doesn't need to change.

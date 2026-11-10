@@ -1,85 +1,63 @@
 """
-Scraper A: Government / PSU engineering apprenticeships & jobs for FRESHERS
-(India-only, since "PSU/Government" is a category specific to India), via
-the Adzuna Jobs API, focused on CSE-allied branches.
+Scraper A: Government / PSU / apprenticeship openings for FRESHERS in India,
+via the Adzuna Jobs API.
+
+Honest note: Adzuna is a private job board, so it carries only a few real
+government postings. A job is labelled "Govt" ONLY if the company/title
+matches a known government body or PSU (see GOVT_PATTERN in base_scraper.py);
+everything else this search finds is labelled "Private". Previously every
+result from this scraper was labelled Govt, which was wrong.
+
+For full government coverage, add a dedicated source later (see README,
+"Next steps").
 """
 import os
 import logging
-import requests
 from scrapers.base_scraper import BaseScraper
 
 logger = logging.getLogger(__name__)
 
-ADZUNA_APP_ID = os.getenv("ADZUNA_APP_ID")
-ADZUNA_APP_KEY = os.getenv("ADZUNA_APP_KEY")
-ADZUNA_URL = "https://api.adzuna.com/v1/api/jobs/in/search/1"
-
-SEARCH_TERMS = (
-    "government fresher graduate trainee apprentice cyber security cybersecurity "
-    "information security network security data scientist AI ML machine "
-    "learning software engineer"
+GOVT_TERMS = (
+    "government govt PSU apprentice apprenticeship NATS ISRO DRDO BEL BHEL CDAC NIC NIELIT "
+    "ONGC NTPC ECIL railway"
 )
-
-
-def _format_eligibility(description: str) -> str:
-    if not description:
-        return "• See official posting for full eligibility criteria"
-    snippet = description[:400]
-    parts = [p.strip() for p in snippet.replace("\n", " ").split(". ") if p.strip()]
-    bullets = parts[:4] if parts else [snippet]
-    return "".join(f"• {b.rstrip('.')}.<br/>" for b in bullets)
+# keep the search to tech roles; the fresher filter does the rest
+TECH_TERMS = "computer software IT cyber data engineer"
 
 
 class GovtScraper(BaseScraper):
     source_name = "GovtScraper"
 
     def fetch_live(self) -> list[dict]:
-        if not ADZUNA_APP_ID or not ADZUNA_APP_KEY:
-            logger.error("Adzuna credentials missing, cannot fetch live govt jobs.")
-            return []
-
-        params = {
-            "app_id": ADZUNA_APP_ID,
-            "app_key": ADZUNA_APP_KEY,
-            "results_per_page": 40,
-            "what_or": SEARCH_TERMS,
-            "max_days_old": 1,
-            "sort_by": "date",
-            "content-type": "application/json",
-        }
-        resp = requests.get(ADZUNA_URL, params=params, timeout=15)
-        resp.raise_for_status()
-        data = resp.json()
-
-        results = []
-        for job in data.get("results", []):
-            description = job.get("description", "")
-            results.append({
-                "title": job.get("title", "Untitled Role"),
-                "company": job.get("company", {}).get("display_name", "Govt/PSU"),
-                "category": "Govt",
-                "eligibility": "[Freshers] " + _format_eligibility(description),
-                "location": job.get("location", {}).get("display_name", "India"),
-                "country": "India",
-                "posted_date": (job.get("created", "") or "")[:10],
-                "deadline": "See posting",
-                "sector": job.get("category", {}).get("label", "Engineering"),
-                "apply_url": job.get("redirect_url", ""),
-            })
-        return results
+        raw = self.adzuna_search("in", {
+            "what_or": GOVT_TERMS,
+            "what_exclude": "telecaller bpo guard driver nurse",
+            "max_days_old": int((os.getenv("MAX_DAYS_OLD_GOVT") or "7")),
+        }, pages=1)
+        jobs = [self.from_adzuna(j, "India", "Private") for j in raw]
+        # Only keep tech-flavoured results from this broad search; fresher filter runs later
+        text_ok = [j for j in jobs if any(t.lower() in f"{j['title']} {j['description']}".lower()
+                                          for t in TECH_TERMS.split())]
+        govt = sum(1 for j in text_ok if j["category"] == "Govt")
+        logger.info("[%s] %d raw, %d tech-related, %d recognised as Govt/PSU.",
+                    self.source_name, len(jobs), len(text_ok), govt)
+        return text_ok
 
     def mock_data(self) -> list[dict]:
         return [
             {
-                "title": "Cyber Security Apprentice",
-                "company": "Bharat Electronics Limited (BEL)",
-                "category": "Govt",
-                "eligibility": "[Freshers] • B.Tech/B.E CSE/IT/Cyber Security.<br/>• 2023-2025 pass out.<br/>• Min 60% aggregate.<br/>",
-                "location": "Bengaluru, Karnataka",
-                "country": "India",
-                "posted_date": "2026-08-30",
-                "deadline": "2026-09-15",
-                "sector": "Defence / Electronics",
-                "apply_url": "https://apprenticeshipindia.gov.in/vacancy/bel-cyber-2026",
+                "job_key": "mock:g1", "title": "Cyber Security Apprentice",
+                "company": "Bharat Electronics Limited (BEL)", "category": "Govt",
+                "location": "Bengaluru, Karnataka", "country": "India", "posted_date": "2026-11-08",
+                "description": "Apprenticeship under NATS. B.Tech/B.E CSE/IT/Cyber Security, 2025 & 2026 pass outs. Min 60% aggregate.",
+                "deadline": "2026-11-30", "sector": "Defence / Electronics",
+                "apply_url": "https://example.com/mock/bel-cyber-apprentice",
+            },
+            {
+                "job_key": "mock:g2", "title": "Project Engineer (Software)", "company": "C-DAC",
+                "category": "Govt", "location": "Pune", "country": "India", "posted_date": "2026-11-08",
+                "description": "Minimum 2 years of experience in software development. B.E/B.Tech CSE.",
+                "deadline": "2026-11-25", "sector": "R&D",
+                "apply_url": "https://example.com/mock/cdac-project-engineer",
             },
         ]

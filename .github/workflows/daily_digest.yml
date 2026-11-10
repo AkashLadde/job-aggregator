@@ -1,4 +1,4 @@
-name: Daily Engineering Jobs Digest
+name: Daily Fresher Jobs Digest
 
 on:
   schedule:
@@ -9,11 +9,15 @@ on:
   workflow_dispatch: {}   # lets you trigger it manually from the Actions tab
 
 permissions:
-  contents: write   # needed only if you commit the PDF back to the repo (Step below)
+  contents: write   # needed to commit job_aggregator.db back (keeps dedupe memory between runs)
+
+concurrency:
+  group: daily-digest
+  cancel-in-progress: false
 
 jobs:
   run-digest:
-    runs-on: ubuntu-22.04
+    runs-on: ubuntu-latest
     timeout-minutes: 15
 
     steps:
@@ -29,39 +33,48 @@ jobs:
       - name: Install Python dependencies
         run: pip install -r requirements.txt
 
-      - name: Install Playwright browsers
-        run: playwright install --with-deps chromium
+      - name: Self-test (fresher filter + job source parsers, offline)
+        run: |
+          python -m tests.test_fresher_filter
+          python -m tests.test_sources
 
       - name: Run the aggregator pipeline
         env:
           ADZUNA_APP_ID: ${{ secrets.ADZUNA_APP_ID }}
           ADZUNA_APP_KEY: ${{ secrets.ADZUNA_APP_KEY }}
-          DATABASE_URL: ${{ secrets.DATABASE_URL }}
           GMAIL_ADDRESS: ${{ secrets.GMAIL_ADDRESS }}
           GMAIL_APP_PASSWORD: ${{ secrets.GMAIL_APP_PASSWORD }}
           EMAIL_RECIPIENT: ${{ secrets.EMAIL_RECIPIENT }}
-          TWILIO_ACCOUNT_SID: ${{ secrets.TWILIO_ACCOUNT_SID }}
-          TWILIO_AUTH_TOKEN: ${{ secrets.TWILIO_AUTH_TOKEN }}
-          TWILIO_WHATSAPP_FROM: ${{ secrets.TWILIO_WHATSAPP_FROM }}
-          WHATSAPP_TO: ${{ secrets.WHATSAPP_TO }}
-          PDF_PUBLIC_URL: ${{ secrets.PDF_PUBLIC_URL }}
+          # Extra free job APIs (optional - each source is skipped if its key is missing)
+          JSEARCH_API_KEY: ${{ secrets.JSEARCH_API_KEY }}     # LinkedIn/Naukri/Indeed via Google for Jobs
+          JOOBLE_API_KEY: ${{ secrets.JOOBLE_API_KEY }}
+          # Optional settings: Settings -> Secrets and variables -> Actions -> Variables tab
+          JOB_COUNTRIES: ${{ vars.JOB_COUNTRIES }}
+          FRESHER_BATCH_YEARS: ${{ vars.FRESHER_BATCH_YEARS }}
+          FRESHER_STRICT: ${{ vars.FRESHER_STRICT }}
+          JSEARCH_PROVIDER: ${{ vars.JSEARCH_PROVIDER }}
+          COMPANY_BOARDS: ${{ vars.COMPANY_BOARDS }}
+          RSS_FEEDS: ${{ vars.RSS_FEEDS }}
         run: python main.py
 
-      - name: Upload PDF as workflow artifact
+      - name: Upload PDFs as workflow artifact
         if: always()
         uses: actions/upload-artifact@v4
         with:
-          name: daily-digest-${{ github.run_id }}
-          path: daily_digest.pdf
+          name: fresher-digest-${{ github.run_id }}
+          path: |
+            cybersecurity_digest.pdf
+            general_cse_digest.pdf
+          if-no-files-found: ignore
           retention-days: 14
 
-      # Optional: commit the DB + PDF back to the repo so state persists
-      # across runs (GitHub Actions runners are ephemeral otherwise).
-      - name: Commit updated database & PDF
+      # Commit the DB back so dedupe state persists (Actions runners are wiped after each run).
+      - name: Commit updated database
         if: always()
         run: |
           git config user.name "job-aggregator-bot"
           git config user.email "actions@github.com"
-          git add job_aggregator.db daily_digest.pdf || true
-          git diff --cached --quiet || git commit -m "chore: daily digest $(date -u +'%Y-%m-%d')"
+          git add job_aggregator.db || true
+          git diff --cached --quiet || git commit -m "chore: update job DB $(date -u +'%Y-%m-%d %H:%M')"
+          git pull --rebase --autostash || true
           git push || echo "Nothing to push"
